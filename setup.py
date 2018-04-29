@@ -2,7 +2,7 @@ import re
 
 from setuptools import setup
 
-with open('garmin_to_geojson.py') as f:
+with open('garmin_to_geojson/__init__.py') as f:
     metadata = dict(re.findall(r'__(.*)__ = [\']([^\']*)[\']', f.read()))
 
 setup(
@@ -23,5 +23,6 @@ setup(
         'console_scripts': [
             'garmin2geojson=garmin_to_geojson:garmin2geojson'
         ]
-    }
+    },
+    packages=['garmin_to_geojson']
 )

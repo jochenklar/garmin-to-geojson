@@ -33,8 +33,7 @@ def garmin2geojson():
     else:
         raise ValueError('Input is not a GPX or TCX file.')
 
-
-    #print(json.dumps(geojson))
+    print(json.dumps(geojson))
 
 
 def gpx2geojson(root):
@@ -51,7 +50,7 @@ def gpx2geojson(root):
         coordinates = []
 
         properties['name'] = trk.find('gpx:name', ns).text
-        print(properties['name'])
+
         for extension in trk.findall('gpx:extensions', ns):
             for node in extension.find('gpxtrkx:TrackStatsExtension', ns):
                 properties[node.tag.replace('{%(gpxtrkx)s}' % ns, '')] = int(node.text)
