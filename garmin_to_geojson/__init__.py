@@ -1,11 +1,11 @@
 import argparse
 import json
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import xml.etree.ElementTree as et
 
-from geopy.distance import geodesic
+from geopy.distance import distance
 
 
 __title__ = 'garmin-to-geojson'
@@ -19,7 +19,7 @@ __description__ = 'Converts GPX or TCX files to geojson'
 
 def garmin2geojson():
     parser = argparse.ArgumentParser(description=__description__)
-    parser.add_argument('input', help='VOTable file to be processed')
+    parser.add_argument('input', help='GPX ot TCX file to be processed')
 
     args = parser.parse_args()
 
@@ -33,7 +33,7 @@ def garmin2geojson():
     else:
         raise ValueError('Input is not a GPX or TCX file.')
 
-    print(json.dumps(geojson))
+    print(json.dumps(geojson, indent=4, sort_keys=True))
 
 
 def gpx2geojson(root):
@@ -42,7 +42,7 @@ def gpx2geojson(root):
         'gpxtrkx': 'http://www.garmin.com/xmlschemas/TrackStatsExtension/v1'
     }
 
-    features, p0, t0 = [], None, None
+    features, dist, p0, t0 = [], 0.0, None, None
 
     for trk in root.findall('gpx:trk', ns):
 
@@ -62,19 +62,20 @@ def gpx2geojson(root):
                 ele = float(trkpt.find('gpx:ele', ns).text)
                 time = trkpt.find('gpx:time', ns).text
 
-                p = (lon, lat)
+                p = (lat, lon)
                 t = datetime.strptime(time, '%Y-%m-%dT%H:%M:%SZ')
 
                 if p0 is None:
-                    dist = 0
+                    d = 0
                 else:
-                    dist = geodesic(p, p0).km
+                    d = distance(p, p0).m
 
                 if t0 is None:
                     vel = 0
                 else:
-                    vel = dist / ((t - t0).seconds / 3600.0)
+                    vel = d / ((t - t0).seconds)
 
+                dist += d
                 p0 = p
                 t0 = t
 
@@ -100,7 +101,7 @@ def tcx2geojson(root):
         'tcx': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2'
     }
 
-    features, p0, t0, d = [], None, None, 0.0
+    features = []
 
     activities = root.find('tcx:Activities', ns)
     for activity in activities.findall('tcx:Activity', ns):
@@ -108,14 +109,16 @@ def tcx2geojson(root):
         for lap in activity.findall('tcx:Lap', ns):
 
             properties = {
-                'TotalTimeSeconds': float(lap.find('tcx:TotalTimeSeconds', ns).text),
-                'DistanceMeters': float(lap.find('tcx:DistanceMeters', ns).text),
-                'MaximumSpeed': float(lap.find('tcx:MaximumSpeed', ns).text),
+                'TotalElapsedTime': float(lap.find('tcx:TotalTimeSeconds', ns).text),
+                'Distance': float(lap.find('tcx:DistanceMeters', ns).text),
+                'MaxSpeed': float(lap.find('tcx:MaximumSpeed', ns).text),
                 'Calories': int(lap.find('tcx:Calories', ns).text),
                 'Intensity': lap.find('tcx:Intensity', ns).text,
                 'TriggerMethod': lap.find('tcx:TriggerMethod', ns).text
             }
             coordinates = []
+
+            dist, p0, t0 = 0.0, None, None
 
             track = lap.find('tcx:Track', ns)
             for trackpoint in track.findall('tcx:Trackpoint', ns):
@@ -135,27 +138,30 @@ def tcx2geojson(root):
                 p = (lat, lon)
                 t = datetime.strptime(time, '%Y-%m-%dT%H:%M:%SZ')
 
-                if p0 is not None:
-                    d += geodesic(p, p0).m
+                if p0 is None:
+                    d = 0
+                else:
+                    d = distance(p, p0).m
 
                 if t0 is None:
                     vel = 0
                 else:
-                    vel = dist / ((t - t0).seconds / 3600.0)
+                    vel = d / ((t - t0).seconds)
 
+                dist += d
                 p0 = p
                 t0 = t
 
                 coordinates.append((lon, lat, ele, time, dist, vel))
 
-        features.append({
-            'type': 'Feature',
-            'properties': properties,
-            'geometry': {
-                'type': 'LineString',
-                'coordinates': coordinates
-            }
-        })
+            features.append({
+                'type': 'Feature',
+                'properties': properties,
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': coordinates
+                }
+            })
 
     return {
         'type': 'FeatureCollection',
